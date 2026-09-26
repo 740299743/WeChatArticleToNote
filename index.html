@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微信文章转笔记</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/turndown/7.1.2/turndown.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #888888;
+    --border: #e5e7eb;
+    --brand: #07c160;
+    --brand-dark: #06ad56;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  header { margin-bottom: 20px; }
+  header h1 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  header h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); display: inline-block; }
+  header p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  .input-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .input-card input {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 14px;
+    outline: none;
+  }
+  .input-card input:focus { border-color: var(--brand); }
+  .btn {
+    border: none;
+    border-radius: 8px;
+    padding: 11px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    background: var(--brand);
+    color: #fff;
+    transition: background .15s;
+  }
+  .btn:hover { background: var(--brand-dark); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.ghost { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn.ghost:hover { background: #f2f3f5; }
+
+  .status { margin: 12px 4px; font-size: 13px; color: var(--muted); min-height: 20px; }
+  .status.err { color: #e24b4a; }
+
+  .note {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: none;
+  }
+  .note.show { display: block; }
+
+  .note-meta { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); }
+  .note-meta h2 { font-size: 18px; font-weight: 600; line-height: 1.4; }
+  .note-meta .sub { margin-top: 6px; font-size: 13px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+
+  .toolbar {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: #fafbfc;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .toolbar button {
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #444;
+  }
+  .toolbar button:hover { background: #eef0f2; }
+  .toolbar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; }
+
+  .editor {
+    padding: 20px 22px;
+    min-height: 320px;
+    outline: none;
+    font-size: 15px;
+    line-height: 1.8;
+  }
+  .editor img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 12px 0; }
+  .editor p { margin: 0 0 14px; }
+  .editor blockquote {
+    border-left: 3px solid var(--brand);
+    padding-left: 12px;
+    color: #666;
+    margin: 14px 0;
+  }
+  .editor h1, .editor h2, .editor h3 { margin: 18px 0 10px; }
+
+  .note-actions { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+  .hint { font-size: 12px; color: #aaa; margin: 8px 4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="dot"></span>微信文章转笔记</h1>
+    <p>粘贴公众号文章链接，一键抓取正文 + 图片，转成可编辑笔记。</p>
+  </header>
+
+  <div class="input-card">
+    <input id="urlInput" type="text" placeholder="粘贴文章链接，如 https://mp.weixin.qq.com/s/..." />
+    <button class="btn" id="fetchBtn" onclick="doFetch()">抓取</button>
+  </div>
+  <div class="hint">提示：在微信里打开文章 → 右上角「···」→ 复制链接。</div>
+
+  <div class="status" id="status"></div>
+
+  <div class="note" id="note">
+    <div class="note-meta">
+      <h2 id="noteTitle"></h2>
+      <div class="sub">
+        <span id="noteAuthor"></span>
+        <span id="noteImgCount"></span>
+        <span id="noteSource"></span>
+      </div>
+    </div>
+    <div class="toolbar" id="toolbar">
+      <button onclick="cmd('bold')" title="加粗"><b>B</b></button>
+      <button onclick="cmd('italic')" title="斜体"><i>I</i></button>
+      <button onclick="cmd('underline')" title="下划线"><u>U</u></button>
+      <span class="sep"></span>
+      <button onclick="fmt('h2')" title="二级标题">H2</button>
+      <button onclick="fmt('h3')" title="三级标题">H3</button>
+      <button onclick="fmt('blockquote')" title="引用">引用</button>
+      <span class="sep"></span>
+      <button onclick="cmd('removeFormat')" title="清除格式">清除格式</button>
+    </div>
+    <div class="editor" id="editor" contenteditable="true" spellcheck="false"></div>
+    <div class="note-actions">
+      <button class="btn" onclick="copyRichText()">复制（带图）</button>
+      <button class="btn ghost" onclick="copyMarkdown()">复制 Markdown</button>
+      <button class="btn ghost" onclick="exportHtml()">导出 HTML</button>
+      <button class="btn ghost" onclick="exportMd()">导出 Markdown</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status');
+
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg || '';
+  statusEl.className = 'status' + (isErr ? ' err' : '');
+}
+
+async function doFetch() {
+  const url = $('urlInput').value.trim();
+  if (!url) { setStatus('请先粘贴文章链接', true); return; }
+  const btn = $('fetchBtn');
+  btn.disabled = true;
+  setStatus('正在抓取文章和图片，请稍候…');
+  try {
+    const r = await fetch('/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const data = await r.json();
+    if (!r.ok) { setStatus(data.detail || '抓取失败', true); return; }
+    render(data);
+    setStatus(`完成：正文已抓取，图片 ${data.image_count} 张已本地化，可直接编辑。`);
+  } catch (e) {
+    setStatus('请求失败：' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function render(data) {
+  $('noteTitle').textContent = data.title;
+  $('noteAuthor').textContent = data.author ? '作者：' + data.author : '';
+  $('noteImgCount').textContent = '图片：' + data.image_count + ' 张';
+  $('noteSource').textContent = '原文链接';
+  $('noteSource').style.cursor = 'pointer';
+  $('noteSource').onclick = () => window.open(data.source_url, '_blank');
+  $('editor').innerHTML = data.content_html;
+  $('note').classList.add('show');
+  $('note').scrollIntoView({ behavior: 'smooth' });
+}
+
+function cmd(name) {
+  document.execCommand(name, false, null);
+  $('editor').focus();
+}
+
+function fmt(tag) {
+  document.execCommand('formatBlock', false, '<' + tag + '>');
+  $('editor').focus();
+}
+
+function download(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportHtml() {
+  const html = '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>'
+    + $('noteTitle').textContent + '</title></head><body>'
+    + $('editor').innerHTML + '</body></html>';
+  download($('noteTitle').textContent + '.html', html, 'text/html');
+}
+
+function exportMd() {
+  const td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+  const title = $('noteTitle').textContent;
+  const author = $('noteAuthor').textContent.replace('作者：', '');
+  const md = '# ' + title + '\n\n'
+    + (author ? '> 作者：' + author + '\n\n' : '')
+    + td.turndown($('editor').innerHTML);
+  download(title + '.md', md, 'text/markdown');
+}
+
+function blobToDataUri(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function copyRichText() {
+  const editor = $('editor');
+  if (!editor.innerHTML.trim()) { setStatus('先抓取一篇文章再复制', true); return; }
+
+  // 克隆内容，把本地图片转成 base64 内嵌，这样粘贴到别处图片才不丢
+  const clone = editor.cloneNode(true);
+  const imgs = clone.querySelectorAll('img');
+  await Promise.all([...imgs].map(async (img) => {
+    let src = img.getAttribute('src') || '';
+    if (src.startsWith('/static/')) {
+      try {
+        const r = await fetch(src);
+        const dataUri = await blobToDataUri(await r.blob());
+        img.setAttribute('src', dataUri);
+      } catch (e) { /* 转码失败则保留原路径 */ }
+    }
+  }));
+
+  const html = clone.innerHTML;
+  const plain = editor.innerText;
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([plain], { type: 'text/plain' })
+      })
+    ]);
+    setStatus('已复制：正文 + ' + imgs.length + ' 张图片已写入剪贴板，可直接粘贴到公众号编辑器 / Word / 印象笔记等。');
+  } catch (e) {
+    setStatus('复制失败：' + e.message + '（剪贴板 API 需在 localhost 或 HTTPS 下、且由点击触发）', true);
+  }
+}
+
+async function copyMarkdown() {
+  const editor = $('editor');
+  if (!editor.innerHTML.trim()) { setStatus('先抓取一篇文章再复制', true); return; }
+
+  // 克隆，图片转 base64，保证 Markdown 里图文自包含
+  const clone = editor.cloneNode(true);
+  await Promise.all([...clone.querySelectorAll('img')].map(async (img) => {
+    let src = img.getAttribute('src') || '';
+    if (src.startsWith('/static/')) {
+      try {
+        const r = await fetch(src);
+        img.setAttribute('src', await blobToDataUri(await r.blob()));
+      } catch (e) { /* 转码失败则保留原路径 */ }
+    }
+  }));
+
+  const td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+  const title = $('noteTitle').textContent;
+  const author = $('noteAuthor').textContent.replace('作者：', '');
+  const md = '# ' + title + '\n\n'
+    + (author ? '> 作者：' + author + '\n\n' : '')
+    + td.turndown(clone.innerHTML);
+
+  try {
+    await navigator.clipboard.writeText(md);
+    setStatus('已复制 Markdown：文字已转 MD，图片以 base64 内嵌（图文完整）。');
+  } catch (e) {
+    setStatus('复制失败：' + e.message, true);
+  }
+}
+
+$('urlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doFetch(); });
+</script>
+</body>
+</html>

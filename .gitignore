@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# 运行时生成的图片（抓取下载的缓存，不提交）
+static/images/
+
+# 本地配置
+.claude/
